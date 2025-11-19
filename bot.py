@@ -63,7 +63,11 @@ def webhook():
                 send_message(chat_id, "Нажмите /start для начала поиска.")
                 return
 
-            data = await ctx.get_data() or {}
+            try:
+                data = await ctx.get_data() or {}
+            except Exception as e:
+                print("FSM get_data error:", e)
+                data = {}
 
             # -----------------------------
             # FSM переходы

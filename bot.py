@@ -1,18 +1,29 @@
-import asyncio
+import os
+import json
 import requests
-from aiogram import Bot, Dispatcher, F
-from aiogram.types import Message
+from flask import Flask, request, jsonify
+from aiogram import Bot, Dispatcher
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import StatesGroup, State
-from config import BOT_TOKEN, BACKEND_URL, CHATGPT_URL
+from aiogram.types import Message
+from aiogram.fsm.storage.memory import MemoryStorage
+
+# =============================
+# Конфигурация
+# =============================
+BOT_TOKEN = os.environ.get("8179723142:AAEpjgK9nhSd12ryKuySX4_978e48JT9Qx0")
+BACKEND_URL = os.environ.get("https://hexkleinan.onrender.com")  # ваш endpoint парсера
+CHATGPT_URL = os.environ.get("CHATGPT_URL")  # endpoint анализа и выбора лучшего
 
 bot = Bot(token=BOT_TOKEN)
-dp = Dispatcher()
+dp = Dispatcher(storage=MemoryStorage())
+
+app = Flask(__name__)
 
 
-# ===============================
-# FINITE STATE MACHINE
-# ===============================
+# =============================
+# FSM для пошагового диалога
+# =============================
 class SearchState(StatesGroup):
     item = State()
     location = State()
@@ -20,94 +31,97 @@ class SearchState(StatesGroup):
     keywords = State()
 
 
-# ===============================
-# START
-# ===============================
-@dp.message(F.text == "/start")
-async def start(message: Message, state: FSMContext):
-    await message.answer("Что вы хотите найти? (Например: Ноутбук, видеокарта HD 5770, ПК)")
-    await state.set_state(SearchState.item)
+# =============================
+# Вспомогательная функция для ответа через Telegram API
+# =============================
+def send_message(chat_id, text):
+    url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
+    requests.post(url, json={"chat_id": chat_id, "text": text})
 
 
-# ===============================
-# 1) Что ищем
-# ===============================
-@dp.message(SearchState.item)
-async def get_item(message: Message, state: FSMContext):
-    await state.update_data(item=message.text)
-    await message.answer("Укажите город и радиус поиска. Пример: 'Бремен +15 км'")
-    await state.set_state(SearchState.location)
+# =============================
+# Webhook endpoint
+# =============================
+@app.route("/webhook", methods=["POST"])
+def webhook():
+    update = request.json
+
+    # Проверяем есть ли сообщение
+    if "message" in update:
+        chat_id = update["message"]["chat"]["id"]
+        text = update["message"].get("text", "")
+        user_id = chat_id  # Можно использовать chat_id как идентификатор для FSM
+
+        # Используем aiogram FSM через MemoryStorage
+        async def process_update():
+            state = dp.storage.get_state(chat=user_id, chat_type="private")
+            ctx = FSMContext(storage=dp.storage, chat=user_id, user=user_id, bot=bot)
+
+            if text == "/start":
+                await ctx.set_state(SearchState.item)
+                send_message(chat_id, "Что вы хотите найти? (Например: Ноутбук, ПК, RTX 3060)")
+            else:
+                current_state = await state
+                if current_state is None:
+                    send_message(chat_id, "Нажмите /start для начала поиска.")
+                    return
+
+                data = await ctx.get_data() or {}
+
+                # FSM переходы
+                if current_state == SearchState.item.state:
+                    await ctx.update_data(item=text)
+                    await ctx.set_state(SearchState.location)
+                    send_message(chat_id, "Укажите город и радиус поиска. Пример: 'Бремен +15 км'")
+                elif current_state == SearchState.location.state:
+                    await ctx.update_data(location=text)
+                    await ctx.set_state(SearchState.max_price)
+                    send_message(chat_id, "Укажите максимальную цену (например: 200)")
+                elif current_state == SearchState.max_price.state:
+                    await ctx.update_data(max_price=text)
+                    await ctx.set_state(SearchState.keywords)
+                    send_message(chat_id, "Укажите дополнительные ключевые слова (например: новая, без повреждений)")
+                elif current_state == SearchState.keywords.state:
+                    await ctx.update_data(keywords=text)
+                    await ctx.clear()
+                    query_json = {
+                        "item": data.get("item"),
+                        "location": data.get("location"),
+                        "max_price": data.get("max_price"),
+                        "keywords": text
+                    }
+                    send_message(chat_id, "Ищу объявления… 🔍")
+
+                    # Отправка на backend
+                    try:
+                        resp = requests.post(BACKEND_URL, json=query_json)
+                        ads = resp.json().get("ads", [])
+                    except Exception as e:
+                        send_message(chat_id, f"Ошибка соединения с сервером: {e}")
+                        return
+
+                    if not ads:
+                        send_message(chat_id, "Ничего не найдено 😕")
+                        return
+
+                    # Отправка объявлений в ChatGPT
+                    try:
+                        gpt_resp = requests.post(CHATGPT_URL, json={"ads": ads})
+                        best = gpt_resp.json().get("best_option", "Ошибка анализа.")
+                    except Exception as e:
+                        best = f"Ошибка отправки в ChatGPT: {e}"
+
+                    send_message(chat_id, best)
+
+        # Запуск асинхронного кода
+        import asyncio
+        asyncio.run(process_update())
+
+    return jsonify({"ok": True})
 
 
-# ===============================
-# 2) Город и радиус
-# ===============================
-@dp.message(SearchState.location)
-async def get_location(message: Message, state: FSMContext):
-    await state.update_data(location=message.text)
-    await message.answer("Укажите максимальную цену (например: 200)")
-    await state.set_state(SearchState.max_price)
-
-
-# ===============================
-# 3) Цена
-# ===============================
-@dp.message(SearchState.max_price)
-async def get_price(message: Message, state: FSMContext):
-    await state.update_data(max_price=message.text)
-    await message.answer("Укажите дополнительные ключевые слова (например: новая, без повреждений)")
-    await state.set_state(SearchState.keywords)
-
-
-# ===============================
-# 4) Ключевые слова → формируем запрос
-# ===============================
-@dp.message(SearchState.keywords)
-async def get_keywords(message: Message, state: FSMContext):
-    await state.update_data(keywords=message.text)
-
-    data = await state.get_data()
-    await state.clear()
-
-    # Формируем JSON-запрос
-    query_json = {
-        "item": data["item"],
-        "location": data["location"],
-        "max_price": data["max_price"],
-        "keywords": data["keywords"]
-    }
-
-    await message.answer("Ищу объявления… 🔍")
-
-    # 1) Отправка на Python backend (парсер Kleinanzeigen)
-    try:
-        resp = requests.post(BACKEND_URL, json=query_json)
-        ads = resp.json().get("ads", [])
-    except Exception as e:
-        await message.answer(f"Ошибка соединения с сервером: {e}")
-        return
-
-    if not ads:
-        await message.answer("Ничего не найдено 😕")
-        return
-
-    # 2) Отправка объявлений в ChatGPT (ты выбираешь лучший вариант)
-    try:
-        gpt_resp = requests.post(CHATGPT_URL, json={"ads": ads})
-        best = gpt_resp.json().get("best_option", "Ошибка анализа.")
-    except Exception as e:
-        best = f"Ошибка отправки в ChatGPT: {e}"
-
-    # 3) Вывод пользователю
-    await message.answer(best)
-
-
-# ===============================
-# RUN
-# ===============================
-async def main():
-    await dp.start_polling(bot)
-
-
+# =============================
+# Локальный запуск для теста
+# =============================
 if __name__ == "__main__":
-    asyncio.run(main())
+    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 8000)))

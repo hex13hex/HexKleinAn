@@ -1,0 +1,7 @@
+aiogram==3.4.1           # Telegram бот + FSM
+requests==2.31.0         # HTTP-запросы к backend и ChatGPT
+python-dotenv==1.0.1     # Для хранения BOT_TOKEN и URL в .env
+fastapi==0.109.0          # Для backend обработчика (Kleinanzeigen API)
+uvicorn==0.23.2          # ASGI сервер для FastAPI (если будем использовать)
+beautifulsoup4==4.12.2   # Парсинг HTML с Kleinanzeigen
+lxml==4.9.3               # Быстрый парсинг HTML для BeautifulSoup

@@ -4,7 +4,11 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="6149bf12-fd31-41f2-82ea-7140389faff6" name="Changes" comment="bot v1.2" />
+    <list default="true" id="6149bf12-fd31-41f2-82ea-7140389faff6" name="Changes" comment="bot v1.3">
+      <change beforePath="$PROJECT_DIR$/.env" beforeDir="false" afterPath="$PROJECT_DIR$/.env" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/config.py" beforeDir="false" afterPath="$PROJECT_DIR$/config.py" afterDir="false" />
+    </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
     <option name="HIGHLIGHT_NON_ACTIVE_CHANGELIST" value="false" />
@@ -95,7 +99,15 @@
       <option name="project" value="LOCAL" />
       <updated>1763587844151</updated>
     </task>
-    <option name="localTasksCounter" value="5" />
+    <task id="LOCAL-00005" summary="bot v1.3">
+      <option name="closed" value="true" />
+      <created>1763588515020</created>
+      <option name="number" value="00005" />
+      <option name="presentableId" value="LOCAL-00005" />
+      <option name="project" value="LOCAL" />
+      <updated>1763588515020</updated>
+    </task>
+    <option name="localTasksCounter" value="6" />
     <servers />
   </component>
   <component name="UnknownFeatures">
@@ -106,6 +118,7 @@
     <MESSAGE value="bot v1.0" />
     <MESSAGE value="bot v1.1" />
     <MESSAGE value="bot v1.2" />
-    <option name="LAST_COMMIT_MESSAGE" value="bot v1.2" />
+    <MESSAGE value="bot v1.3" />
+    <option name="LAST_COMMIT_MESSAGE" value="bot v1.3" />
   </component>
 </project>

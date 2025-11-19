@@ -52,7 +52,7 @@ def webhook():
     async def process_update():
         try:
             ctx = FSMContext(storage=dp.storage, chat=user_id, user=user_id, bot=bot)
-            state = await ctx.get_state()
+            state = await ctx.storage.get_state(chat=user_id, user=user_id)
 
             if text == "/start":
                 await ctx.set_state(SearchState.item)

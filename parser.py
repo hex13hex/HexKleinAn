@@ -1,52 +1,40 @@
 import requests
 from bs4 import BeautifulSoup
-import json
-from urllib.parse import quote
 
-def search_kleinanzeigen(query: str):
-    # Превращаем запрос в URL-friendly формат
-    q = quote(query)
+def search_kleinanzeigen(query):
+    # Преобразуем поисковый запрос в URL-friendly формат
+    query_encoded = query.replace(" ", "+")
+    url = f"https://m.kleinanzeigen.de/s-suchanfrage.html?keywords={query_encoded}"
 
-    url = f"https://www.kleinanzeigen.de/s-suche/{q}/k0"
+    print("Parser URL:", url)
 
     headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
-                      "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-        "Accept-Language": "de,en;q=0.9",
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
     }
 
     response = requests.get(url, headers=headers)
-    if response.status_code != 200:
-        return json.dumps({"error": "Failed to load page"})
 
-    soup = BeautifulSoup(response.text, "html.parser")
+    print("Status code:", response.status_code)
+    print("Response length:", len(response.text))
 
-    items = soup.select("article.aditem")[:5]  # первые 5 результатов
+    soup = BeautifulSoup(response.text, "lxml")
 
     results = []
 
-    for item in items:
-        title_el = item.select_one(".ellipsis")
-        price_el = item.select_one(".aditem-main--middle--price-shipping--price")
-        desc_el = item.select_one(".aditem-main--middle--description")
-        link_el = item.select_one("a")
+    items = soup.find_all("article")
 
-        title = title_el.get_text(strip=True) if title_el else "Нет заголовка"
-        price = price_el.get_text(strip=True) if price_el else "Цена не указана"
-        desc = desc_el.get_text(strip=True) if desc_el else "Описание отсутствует"
+    print("Found items:", len(items))
 
-        # формируем полный URL
-        link = (
-            "https://www.kleinanzeigen.de" + link_el.get("href")
-            if link_el and link_el.get("href")
-            else ""
-        )
+    for item in items[:5]:
+        title = item.find("h2")
+        price = item.find("p", attrs={"class": "aditem-main--middle--price"})
+        link = item.find("a")
 
         results.append({
-            "title": title,
-            "price": price,
-            "link": link,
-            "description": desc
+            "title": title.text.strip() if title else "",
+            "price": price.text.strip() if price else "",
+            "link": "https://www.kleinanzeigen.de" + link["href"] if link else "",
+            "description": ""
         })
 
-    return json.dumps(results, ensure_ascii=False, indent=2)
+    return results

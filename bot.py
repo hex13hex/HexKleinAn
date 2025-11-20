@@ -94,6 +94,7 @@ def webhook():
                     chat_id,
                     f"Найденные результаты:\n```\n{results}\n```"
                 )
+                print("RESULTS:", results)
 
             except Exception as e:
                 print("=== Parser error ===")

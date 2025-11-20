@@ -96,8 +96,8 @@ def webhook():
                 )
 
             except Exception as e:
-                print("Parser error:", e)
                 send_message(chat_id, "Произошла ошибка при поиске на Kleinanzeigen.")
+                send_message(chat_id, e)
 
     except Exception as e:
         print("Error in processing update:", e)

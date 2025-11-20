@@ -92,8 +92,7 @@ def webhook():
                 # Отправляем JSON-результаты пользователю
                 send_message(
                     chat_id,
-                    f"Найденные результаты:\n```\n{results}\n```",
-                    parse_mode="Markdown"
+                    f"Найденные результаты:\n```\n{results}\n```"
                 )
 
             except Exception as e:

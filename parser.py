@@ -24,7 +24,6 @@ def try_get(url, headers=None, timeout=10):
 
 def parse_items_from_soup(soup, max_items=5):
     results = []
-    # здесь пробуем несколько селекторов — сайт менялся, поэтому пробуем варианты
     selectors = [
         "article",  # общий
         "div.ad-listitem",
@@ -43,19 +42,16 @@ def parse_items_from_soup(soup, max_items=5):
         return results
 
     for item in found[:max_items]:
-        # Заголовок
         title = ""
         t = item.select_one("h2") or item.select_one(".title") or item.select_one(".headline") or item.select_one(".aditem__title")
         if t:
             title = t.get_text(strip=True)
 
-        # Цена
         price = ""
         p = item.select_one(".aditem-main--middle--price") or item.select_one(".price") or item.select_one(".aditem__price") or item.select_one("p.price")
         if p:
             price = p.get_text(strip=True)
 
-        # Ссылка
         link = ""
         a = item.select_one("a")
         if a and a.get("href"):
@@ -65,7 +61,6 @@ def parse_items_from_soup(soup, max_items=5):
             else:
                 link = href
 
-        # Описание
         desc = ""
         d = item.select_one(".aditem-main--middle--description") or item.select_one(".description") or item.select_one("p")
         if d:
@@ -80,9 +75,20 @@ def parse_items_from_soup(soup, max_items=5):
     return results
 
 def search_kleinanzeigen(query: str, max_items=5):
+    """
+    Возвращает dict:
+    {
+      "method": "1" | "2" | "3" | "none",
+      "results": [ {...}, ... ]
+    }
+    Метод 1 = JSON endpoints,
+    Метод 2 = mobile HTML,
+    Метод 3 = desktop HTML,
+    Метод none = ничего не найдено
+    """
     query_enc = quote_plus(query)
 
-    # 1) Попытка: мобильный JSON (если доступен)
+    # 1) Попытка: мобильный JSON (метод №1)
     json_urls = [
         f"https://m.kleinanzeigen.de/s-suchanfrage.json?keywords={query_enc}",
         f"https://m.ebay-kleinanzeigen.de/s-suchanfrage.json?keywords={query_enc}"
@@ -105,14 +111,14 @@ def search_kleinanzeigen(query: str, max_items=5):
                     results.append({"title": title, "price": price, "link": link, "description": desc})
                 if results:
                     print(f"[JSON] found {len(results)} items")
-                    return results
+                    return {"method": "1", "results": results}
                 else:
                     print("[JSON] parsed JSON but no ads extracted")
             except Exception as e:
                 print("[JSON parse error]", e)
         time.sleep(0.5)
 
-    # 2) Попытка: мобильная HTML страница (меньше защиты)
+    # 2) Попытка: мобильная HTML страница (метод №2)
     mobile_urls = [
         f"https://m.kleinanzeigen.de/s-suchanfrage.html?keywords={query_enc}",
         f"https://m.ebay-kleinanzeigen.de/s-suchanfrage.html?keywords={query_enc}",
@@ -127,10 +133,10 @@ def search_kleinanzeigen(query: str, max_items=5):
         soup = BeautifulSoup(r.text, "html.parser")
         items = parse_items_from_soup(soup, max_items=max_items)
         if items:
-            return items
+            return {"method": "2", "results": items}
         time.sleep(0.6)
 
-    # 3) Попытка: desktop search page (последний шанс)
+    # 3) Попытка: desktop search page (метод №3)
     desktop_url = f"https://www.kleinanzeigen.de/s-suche/{quote_plus(query)}/k0"
     print("[TRY] desktop:", desktop_url)
     r = try_get(desktop_url)
@@ -138,7 +144,7 @@ def search_kleinanzeigen(query: str, max_items=5):
         soup = BeautifulSoup(r.text, "html.parser")
         items = parse_items_from_soup(soup, max_items=max_items)
         if items:
-            return items
+            return {"method": "3", "results": items}
 
     print("[RESULT] nothing found, returning []")
-    return []
+    return {"method": "none", "results": []}

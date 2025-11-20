@@ -1,65 +1,27 @@
-import os
-
 import requests
-from flask import Flask, request, jsonify
+import json
 from parser import search_kleinanzeigen
-import traceback
 
-# =========================
-# Конфигурация
-# =========================
-from config import BOT_TOKEN, BACKEND_URL, CHATGPT_URL
+BOT_TOKEN = "YOUR_BOT_TOKEN"
+BASE_URL = f"https://api.telegram.org/bot{BOT_TOKEN}/"
 
-app = Flask(__name__)
+users_state = {}
+users_data = {}
 
-# =========================
-# Простая память для FSM
-# =========================
-users_state = {}  # chat_id: current_step
-users_data = {}   # chat_id: {item, location, max_price, keywords}
-
-# =========================
-# Отправка сообщений
-# =========================
 def send_message(chat_id, text):
-    url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
-    requests.post(url, json={"chat_id": chat_id, "text": text})
+    payload = {"chat_id": chat_id, "text": text, "parse_mode": "Markdown"}
+    requests.post(BASE_URL + "sendMessage", json=payload)
 
-# =========================
-# Webhook
-# =========================
-@app.route("/webhook", methods=["POST"])
-def webhook():
-    update = request.json
-    if "message" not in update:
-        return jsonify({"ok": True})
-
-    chat_id = update["message"]["chat"]["id"]
-    text = update["message"].get("text", "")
-
-    # -----------------------------
-    # /start
-    # -----------------------------
-    if text == "/start":
-        users_state[chat_id] = "item"
-        users_data[chat_id] = {}
-        send_message(chat_id, "Привет! Что вы хотите найти? (Например: Ноутбук, ПК, RTX 3060)")
-        return jsonify({"ok": True})
-
-    # -----------------------------
-    # Проверка состояния пользователя
-    # -----------------------------
+def handle_message(chat_id, text):
     state = users_state.get(chat_id)
-    if not state:
-        send_message(chat_id, "Нажмите /start для начала поиска.")
-        return jsonify({"ok": True})
-
-    # -----------------------------
-    # Пошаговый диалог
-    # -----------------------------
     try:
+        if state is None:
+            users_state[chat_id] = "item"
+            send_message(chat_id, "Что вы ищете? (например: Ноутбук, Настольный ПК)")
+            return
+
         if state == "item":
-            users_data[chat_id]["item"] = text
+            users_data.setdefault(chat_id, {})["item"] = text
             users_state[chat_id] = "location"
             send_message(chat_id, "Укажите город и радиус поиска. Пример: 'Бремен +15 км'")
         elif state == "location":
@@ -73,46 +35,28 @@ def webhook():
         elif state == "keywords":
             users_data[chat_id]["keywords"] = text
             users_state.pop(chat_id)
-            query_json = users_data.pop(chat_id)
-
+            query_data = users_data.pop(chat_id)
             send_message(chat_id, "Ищу объявления… 🔍")
 
-            try:
-                # Формируем поисковый запрос
-                search_query = (
-                    f"{query_json['item']} "
-                    f"{query_json['location']} "
-                    f"до {query_json['max_price']} евро "
-                    f"{query_json['keywords']}"
-                )
+            # Формируем поисковый запрос
+            query_string = f"{query_data['item']} {query_data.get('keywords','')}".strip()
 
-                # Выполняем парсинг
-                results = search_kleinanzeigen(search_query)
+            # Вызываем парсер
+            resp = search_kleinanzeigen(query_string, max_items=5)
+            method = resp.get("method", "none")
+            results = resp.get("results", [])
 
-                # Отправляем JSON-результаты пользователю
-                send_message(
-                    chat_id,
-                    f"Найденные результаты:\n```\n{results}\n```"
-                )
-                print("RESULTS:", results)
-
-            except Exception as e:
-                print("=== Parser error ===")
-                print("Error:", e)
-                print("Traceback:")
-                traceback.print_exc()
-                print("Query JSON:", query_json)
-                print("Search query string:", search_query)
-                send_message(chat_id, "Произошла ошибка при поиске на Kleinanzeigen.")
+            if not results:
+                send_message(chat_id, f"Метод: {method}\nНичего не найдено 😕")
+            else:
+                payload = json.dumps(results, ensure_ascii=False, indent=2)
+                if len(payload) <= 3500:
+                    send_message(chat_id, f"Метод: {method}\nНайденные результаты:\n```{payload}```")
+                else:
+                    send_message(chat_id, f"Метод: {method}\nНайдено {len(results)} объявлений. Отправляю по одному...")
+                    for i, ad in enumerate(results, start=1):
+                        txt = f"#{i}\n{ad.get('title')}\n{ad.get('price')}\n{ad.get('link')}\n{ad.get('description')}"
+                        send_message(chat_id, txt)
 
     except Exception as e:
-        print("Error in processing update:", e)
-        send_message(chat_id, "Произошла внутренняя ошибка. Попробуйте снова.")
-
-    return jsonify({"ok": True})
-
-# =========================
-# Локальный запуск
-# =========================
-if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 8000)))
+        send_message(chat_id, f"Произошла внутренняя ошибка: {str(e)}")

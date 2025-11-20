@@ -99,17 +99,6 @@ def webhook():
                 print("Parser error:", e)
                 send_message(chat_id, "Произошла ошибка при поиске на Kleinanzeigen.")
 
-            # -----------------------------
-            # Отправка в ChatGPT
-            # -----------------------------
-            try:
-                gpt_resp = requests.post(CHATGPT_URL, json={"ads": ads}, timeout=10)
-                best = gpt_resp.json().get("best_option", "Ошибка анализа.")
-            except Exception as e:
-                best = f"Ошибка отправки в ChatGPT: {e}"
-
-            send_message(chat_id, best)
-
     except Exception as e:
         print("Error in processing update:", e)
         send_message(chat_id, "Произошла внутренняя ошибка. Попробуйте снова.")

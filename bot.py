@@ -3,6 +3,7 @@ import os
 import requests
 from flask import Flask, request, jsonify
 from parser import search_kleinanzeigen
+import traceback
 
 # =========================
 # Конфигурация
@@ -96,8 +97,13 @@ def webhook():
                 )
 
             except Exception as e:
+                print("=== Parser error ===")
+                print("Error:", e)
+                print("Traceback:")
+                traceback.print_exc()
+                print("Query JSON:", query_json)
+                print("Search query string:", search_query)
                 send_message(chat_id, "Произошла ошибка при поиске на Kleinanzeigen.")
-                send_message(chat_id, e)
 
     except Exception as e:
         print("Error in processing update:", e)

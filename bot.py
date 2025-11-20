@@ -1,8 +1,11 @@
+from flask import Flask, request
+import os
+from parser import search_kleinanzeigen
 import requests
 import json
-from parser import search_kleinanzeigen
 
-BOT_TOKEN = "YOUR_BOT_TOKEN"
+app = Flask(__name__)
+BOT_TOKEN = os.environ.get("BOT_TOKEN")
 BASE_URL = f"https://api.telegram.org/bot{BOT_TOKEN}/"
 
 users_state = {}
@@ -37,15 +40,10 @@ def handle_message(chat_id, text):
             users_state.pop(chat_id)
             query_data = users_data.pop(chat_id)
             send_message(chat_id, "Ищу объявления… 🔍")
-
-            # Формируем поисковый запрос
             query_string = f"{query_data['item']} {query_data.get('keywords','')}".strip()
-
-            # Вызываем парсер
             resp = search_kleinanzeigen(query_string, max_items=5)
             method = resp.get("method", "none")
             results = resp.get("results", [])
-
             if not results:
                 send_message(chat_id, f"Метод: {method}\nНичего не найдено 😕")
             else:
@@ -57,6 +55,19 @@ def handle_message(chat_id, text):
                     for i, ad in enumerate(results, start=1):
                         txt = f"#{i}\n{ad.get('title')}\n{ad.get('price')}\n{ad.get('link')}\n{ad.get('description')}"
                         send_message(chat_id, txt)
-
     except Exception as e:
         send_message(chat_id, f"Произошла внутренняя ошибка: {str(e)}")
+
+@app.route("/webhook", methods=["POST"])
+def webhook():
+    data = request.get_json()
+    if not data or "message" not in data:
+        return {"ok": True}
+    chat_id = data["message"]["chat"]["id"]
+    text = data["message"].get("text", "")
+    handle_message(chat_id, text)
+    return {"ok": True}
+
+if __name__ == "__main__":
+    port = int(os.environ.get("PORT", 5000))
+    app.run(host="0.0.0.0", port=port)

@@ -1,6 +1,8 @@
 import os
+
 import requests
 from flask import Flask, request, jsonify
+from parser import search_kleinanzeigen
 
 # =========================
 # Конфигурация
@@ -74,19 +76,28 @@ def webhook():
 
             send_message(chat_id, "Ищу объявления… 🔍")
 
-            # -----------------------------
-            # Отправка на backend
-            # -----------------------------
             try:
-                resp = requests.post(BACKEND_URL, json=query_json, timeout=10)
-                ads = resp.json().get("ads", [])
-            except Exception as e:
-                send_message(chat_id, f"Ошибка соединения с сервером: {e}")
-                return jsonify({"ok": True})
+                # Формируем поисковый запрос
+                search_query = (
+                    f"{query_json['item']} "
+                    f"{query_json['location']} "
+                    f"до {query_json['max_price']} евро "
+                    f"{query_json['keywords']}"
+                )
 
-            if not ads:
-                send_message(chat_id, "Ничего не найдено 😕")
-                return jsonify({"ok": True})
+                # Выполняем парсинг
+                results = search_kleinanzeigen(search_query)
+
+                # Отправляем JSON-результаты пользователю
+                send_message(
+                    chat_id,
+                    f"Найденные результаты:\n```\n{results}\n```",
+                    parse_mode="Markdown"
+                )
+
+            except Exception as e:
+                print("Parser error:", e)
+                send_message(chat_id, "Произошла ошибка при поиске на Kleinanzeigen.")
 
             # -----------------------------
             # Отправка в ChatGPT

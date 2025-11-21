@@ -9,7 +9,6 @@ BOT_TOKEN = os.environ.get("BOT_TOKEN")
 BASE_URL = f"https://api.telegram.org/bot{BOT_TOKEN}/"
 
 def send_message(chat_id, text):
-    """Отправка сообщения пользователю Telegram"""
     payload = {"chat_id": chat_id, "text": text}
     try:
         r = requests.post(BASE_URL + "sendMessage", json=payload)
@@ -19,26 +18,14 @@ def send_message(chat_id, text):
 
 @app.route("/webhook", methods=["POST"])
 def webhook():
-    """Приём webhook от Telegram"""
-    data = request.get_json()
-    print("[WEBHOOK UPDATE]", json.dumps(data, ensure_ascii=False))
-    if not data:
-        return {"ok": True}
-
-    message = data.get("message") or data.get("edited_message")
-    if not message:
-        return {"ok": True}
-
-    chat_id = message["chat"]["id"]
-    text = message.get("text", "")
-
-    # Обработка команды /start
-    if text.startswith("/start"):
-        send_message(chat_id, "Привет! Я минимальный тестовый бот. ✅")
-        return {"ok": True}
-
-    # Ответ на любое другое сообщение
-    send_message(chat_id, f"Вы написали: {text}")
+    try:
+        data = request.get_json(force=True)
+        print("[WEBHOOK UPDATE]", json.dumps(data, ensure_ascii=False))
+        chat_id = data["message"]["chat"]["id"]
+        text = data["message"].get("text", "")
+        send_message(chat_id, f"Получено сообщение: {text}")
+    except Exception as e:
+        print(f"[ERROR webhook]: {e}")
     return {"ok": True}
 
 if __name__ == "__main__":

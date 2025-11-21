@@ -19,13 +19,26 @@ def send_message(chat_id, text):
 @app.route("/webhook", methods=["POST"])
 def webhook():
     try:
+        # принудительно получаем JSON
         data = request.get_json(force=True)
+        print("[RAW DATA]", request.data.decode("utf-8"))
         print("[WEBHOOK UPDATE]", json.dumps(data, ensure_ascii=False))
-        chat_id = data["message"]["chat"]["id"]
-        text = data["message"].get("text", "")
-        send_message(chat_id, f"Получено сообщение: {text}")
+
+        message = data.get("message")
+        if not message:
+            return {"ok": True}
+
+        chat_id = message["chat"]["id"]
+        text = message.get("text", "")
+
+        if text.startswith("/start"):
+            send_message(chat_id, "Привет! Бот работает ✅")
+        else:
+            send_message(chat_id, f"Вы написали: {text}")
+
     except Exception as e:
         print(f"[ERROR webhook]: {e}")
+
     return {"ok": True}
 
 if __name__ == "__main__":

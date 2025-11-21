@@ -1,12 +1,13 @@
+import os
+import json
 import requests
-from parser import search_kleinanzeigen  # твой парсер
+from flask import Flask, request
 
-BOT_TOKEN = "YOUR_BOT_TOKEN"
+app = Flask(__name__)
+
+# Получаем токен из переменных окружения Render
+BOT_TOKEN = os.environ.get("BOT_TOKEN")
 BASE_URL = f"https://api.telegram.org/bot{BOT_TOKEN}/"
-
-# Хранение состояний и данных пользователей
-users_state = {}
-users_data = {}
 
 def send_message(chat_id, text):
     """Отправка сообщения пользователю Telegram"""
@@ -17,73 +18,31 @@ def send_message(chat_id, text):
     except Exception as e:
         print(f"[ERROR] send_message: {e}")
 
-def handle_message(chat_id, text):
-    """Обработка состояния пользователя и логика пошагового опроса"""
-    state = users_state.get(chat_id)
+@app.route("/webhook", methods=["POST"])
+def webhook():
+    """Обработка POST-запроса от Telegram"""
     try:
-        if state is None:
-            users_state[chat_id] = "item"
-            send_message(chat_id, "Привет! Что вы ищете? (например: Ноутбук, Настольный ПК)")
-            return
+        # Telegram шлёт JSON
+        data = request.get_json(force=True)
+        print("[WEBHOOK UPDATE]", json.dumps(data, ensure_ascii=False))
 
-        if state == "item":
-            users_data.setdefault(chat_id, {})["item"] = text
-            users_state[chat_id] = "location"
-            send_message(chat_id, "Укажите город и радиус поиска. Пример: 'Бремен +15 км'")
-        elif state == "location":
-            users_data[chat_id]["location"] = text
-            users_state[chat_id] = "max_price"
-            send_message(chat_id, "Укажите максимальную цену (например: 200)")
-        elif state == "max_price":
-            users_data[chat_id]["max_price"] = text
-            users_state[chat_id] = "keywords"
-            send_message(chat_id, "Укажите дополнительные ключевые слова (например: новая, без повреждений)")
-        elif state == "keywords":
-            users_data[chat_id]["keywords"] = text
-            users_state.pop(chat_id)
-            query_data = users_data.pop(chat_id)
+        message = data.get("message")
+        if not message:
+            return {"ok": True}
 
-            send_message(chat_id, "Ищу объявления… 🔍")
+        chat_id = message["chat"]["id"]
+        text = message.get("text", "")
 
-            # Формируем поисковый запрос
-            query_string = f"{query_data['item']} {query_data.get('keywords','')}".strip()
-
-            # Вызываем парсер Kleinanzeigen
-            resp = search_kleinanzeigen(query_string, max_items=5)
-            method = resp.get("method", "unknown")
-            results = resp.get("results", [])
-
-            # Формируем сообщение пользователю
-            if not results:
-                send_message(chat_id, f"Метод: {method}\nНичего не найдено 😕")
-            else:
-                payload_text = "\n\n".join(
-                    [f"{i+1}. {r['title']} - {r.get('price','-')} €\n{r['link']}\n{r.get('description','')}"
-                     for i, r in enumerate(results)]
-                )
-                send_message(chat_id, f"Метод: {method}\nНайденные результаты:\n{payload_text}")
+        if text.startswith("/start"):
+            send_message(chat_id, "Привет! Бот работает ✅")
+        else:
+            send_message(chat_id, f"Вы написали: {text}")
 
     except Exception as e:
-        send_message(chat_id, f"Произошла внутренняя ошибка: {str(e)}")
-        print(f"[ERROR] handle_message: {e}")
+        print(f"[ERROR webhook]: {e}")
+    return {"ok": True}
 
-# -------------------------
-# Пример цикла polling (для теста, работает на Render Free)
-# -------------------------
-import time
-
-offset = 0
-while True:
-    try:
-        r = requests.get(BASE_URL + "getUpdates", params={"offset": offset, "timeout": 30}).json()
-        for update in r.get("result", []):
-            offset = max(offset, update["update_id"] + 1)
-            message = update.get("message")
-            if not message:
-                continue
-            chat_id = message["chat"]["id"]
-            text = message.get("text", "")
-            handle_message(chat_id, text)
-    except Exception as e:
-        print(f"[ERROR polling]: {e}")
-    time.sleep(1)
+if __name__ == "__main__":
+    port = int(os.environ.get("PORT", 5000))
+    print(f"Listening on 0.0.0.0:{port}")
+    app.run(host="0.0.0.0", port=port)
